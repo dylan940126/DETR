@@ -1,5 +1,6 @@
 import torch
 from scipy.optimize import linear_sum_assignment
+import numpy as np
 from torch import nn
 from torch import optim
 from torch.utils.data import DataLoader
@@ -43,10 +44,11 @@ class DETR(nn.Module):
 
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
+# device = 'cpu'
 
 # Load COCO dataset
 transform = transforms.Compose([
-    # transforms.Resize((256, 256)),
+    transforms.Resize((128, 128)),
     transforms.ToTensor()
 ])
 
@@ -63,20 +65,25 @@ optimizer = optim.Adam(model.parameters(), lr=1e-2)
 
 # Train model
 for images, targets in data_loader:
-    optimizer.zero_grad()
-    classes, boxes = model(images)  # (1,100,92), (1,100,4)
-    classes = classes.cpu()
-    boxes = boxes.cpu()
-    for class_preds, box_preds in zip(classes, boxes):
-
-        loss_mat = [
-            [(F.cross_entropy(class_pred, F.one_hot(target['category_id'], num_classes=92).squeeze(0).float()) +
-                F.l1_loss(box_pred, torch.cat(target['bbox'])))
-                for target in targets]
-            for class_pred, box_pred in zip(class_preds, box_preds)]
-        loss_mat = torch.stack([torch.stack(row) for row in loss_mat])
-        assign = linear_sum_assignment(loss_mat.detach())
-        loss = torch.sum(loss_mat[assign])
-        print(loss)
-        loss.backward()
-        optimizer.step()
+    try:
+        optimizer.zero_grad()
+        classes_p, boxes_p = model(images)  # (1,100,92), (1,100,4)
+        for class_preds, box_preds in zip(classes_p, boxes_p):
+            class_targs = torch.cat([target['category_id'] for target in targets]).to(device)
+            class_targs = torch.cat([class_targs, torch.zeros(100 - len(class_targs), dtype=torch.int, device=device)])
+            class_targs = F.one_hot(class_targs, num_classes=92).float()
+            box_targs = torch.stack([torch.cat(target['bbox']) for target in targets]).to(device)
+            box_targs = torch.cat([box_targs, torch.zeros(100 - len(box_targs), 4, device=device)])
+            loss_mat = [[(F.cross_entropy(class_pred, class_targ) + F.l1_loss(box_pred, box_targ))
+                         for class_targ, box_targ in zip(class_targs, box_targs)]
+                        for class_pred, box_pred in zip(class_preds, box_preds)]
+            loss_mat = torch.stack([torch.stack(row) for row in loss_mat])
+            assign = linear_sum_assignment(loss_mat.detach().cpu().numpy())
+            loss = torch.sum(loss_mat[assign])
+            print(loss)
+            loss.backward()
+            optimizer.step()
+    except Exception as e:
+        print(targets)
+        print(e)
+        continue
