@@ -1,100 +1,69 @@
-# Pytorch implementation of Hungarian Algorithm
-# Inspired from here : https://python.plainenglish.io/hungarian-algorithm-introduction-python-implementation-93e7c0890e15
+#!/usr/bin/env python
 
-# Despite my effort to parallelize the code, there is still some sequential workflows in this code
+"""
+    auction_lap.py
 
-from typing import Tuple
+    From
+        https://dspace.mit.edu/bitstream/handle/1721.1/3265/P-2108-26912652.pdf;sequence=1
+"""
+
+from __future__ import print_function, division
+
+import sys
 import torch
-from torch import Tensor
-
-def min_zero_row(zero_mat: Tensor) -> Tuple[Tensor, Tensor]:
-    sum_zero_mat = zero_mat.sum(1)
-    sum_zero_mat[sum_zero_mat == 0] = 9999
-
-    zero_row = sum_zero_mat.min(0)[1]
-    zero_column = zero_mat[zero_row].nonzero()[0]
-
-    zero_mat[zero_row, :] = False
-    zero_mat[:, zero_column] = False
-
-    mark_zero = torch.tensor([[zero_row, zero_column]], device=zero_mat.device)
-    return zero_mat, mark_zero
 
 
-def mark_matrix(mat: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
-    zero_bool_mat = (mat == 0)
-    zero_bool_mat_copy = zero_bool_mat.clone()
+def auction_lap(X, eps=None, compute_score=True):
+    """
+        X: n-by-n matrix w/ integer entries
+        eps: "bid size" -- smaller values means higher accuracy w/ longer runtime
+    """
+    eps = 1 / X.shape[0] if eps is None else eps
 
-    marked_zero = torch.tensor([], device=mat.device)
-    while (True in zero_bool_mat_copy):
-        zero_bool_mat_copy, mark_zero = min_zero_row(zero_bool_mat_copy)
-        marked_zero = torch.concat([marked_zero, mark_zero], dim=0)
+    # --
+    # Init
 
-    marked_zero_row = marked_zero[:, 0]
-    marked_zero_col = marked_zero[:, 1]
+    cost = torch.zeros((1, X.shape[1]))
+    curr_ass = torch.zeros(X.shape[0]).long() - 1
+    bids = torch.zeros(X.shape)
 
-    arange_index_row = torch.arange(mat.shape[0], dtype=torch.float, device=mat.device).unsqueeze(1)
+    if X.is_cuda:
+        cost, curr_ass, bids = cost.cuda(), curr_ass.cuda(), bids.cuda()
 
-    repeated_marked_row = marked_zero_row.repeat(mat.shape[0], 1)
-    bool_non_marked_row = torch.all(arange_index_row != repeated_marked_row, dim=1)
-    non_marked_row = arange_index_row[bool_non_marked_row].squeeze()
+    while (curr_ass == -1).any():
 
-    non_marked_mat = zero_bool_mat[non_marked_row.long(), :]
-    marked_cols = non_marked_mat.nonzero().unique()
+        # --
+        # Bidding
 
-    is_need_add_row = True
-    while is_need_add_row:
-        repeated_non_marked_row = non_marked_row.repeat(marked_zero_row.shape[0], 1)
-        repeated_marked_cols = marked_cols.repeat(marked_zero_col.shape[0], 1)
+        unassigned = (curr_ass == -1).nonzero().squeeze(dim=1)
 
-        first_bool = torch.all(marked_zero_row.unsqueeze(1) != repeated_non_marked_row, dim=1)
-        second_bool = torch.any(marked_zero_col.unsqueeze(1) == repeated_marked_cols, dim=1)
+        value = X[unassigned] - cost
+        top_value, top_idx = value.topk(2, dim=1)
 
-        addit_non_marked_row = marked_zero_row[first_bool & second_bool]
+        first_idx = top_idx[:, 0]
+        first_value, second_value = top_value[:, 0], top_value[:, 1]
 
-        if addit_non_marked_row.shape[0] > 0:
-            non_marked_row = torch.concat([non_marked_row.reshape(-1), addit_non_marked_row[0].reshape(-1)])
-        else:
-            is_need_add_row = False
+        bid_increments = first_value - second_value + eps
 
-    repeated_non_marked_row = non_marked_row.repeat(mat.shape[0], 1)
-    bool_marked_row = torch.all(arange_index_row != repeated_non_marked_row, dim=1)
-    marked_rows = arange_index_row[bool_marked_row].squeeze(0)
+        bids_ = bids[unassigned]
+        bids_.zero_()
+        bids_.scatter_(
+            dim=1,
+            index=first_idx.contiguous().view(-1, 1),
+            src=bid_increments.view(-1, 1)
+        )
 
-    return marked_zero, marked_rows, marked_cols
+        # --
+        # Assignment
 
+        have_bidder = (bids_ > 0).int().sum(dim=0).nonzero()
 
-def adjust_matrix(mat: Tensor, cover_rows: Tensor, cover_cols: Tensor) -> Tensor:
-    bool_cover = torch.zeros_like(mat)
-    bool_cover[cover_rows.long()] = True
-    bool_cover[:, cover_cols.long()] = True
+        high_bids, high_bidders = bids_[:, have_bidder].max(dim=0)
+        high_bidders = unassigned[high_bidders.squeeze()]
 
-    non_cover = mat[bool_cover != True]
-    min_non_cover = non_cover.min()
+        cost[:, have_bidder] += high_bids
 
-    mat[bool_cover != True] = mat[bool_cover != True] - min_non_cover
+        curr_ass[(curr_ass.view(-1, 1) == have_bidder.view(1, -1)).sum(dim=1)] = -1
+        curr_ass[high_bidders] = have_bidder.squeeze()
 
-    double_bool_cover = torch.zeros_like(mat)
-    double_bool_cover[cover_rows.long(), cover_cols.long()] = True
-
-    mat[double_bool_cover == True] = mat[double_bool_cover == True] + min_non_cover
-
-    return mat
-
-
-def hungarian_algorithm(mat: Tensor) -> Tensor:
-    dim = mat.shape[0]
-    cur_mat = mat
-
-    cur_mat = cur_mat - cur_mat.min(1, keepdim=True)[0]
-    cur_mat = cur_mat - cur_mat.min(0, keepdim=True)[0]
-
-    zero_count = 0
-    while zero_count < dim:
-        ans_pos, marked_rows, marked_cols = mark_matrix(cur_mat)
-        zero_count = len(marked_rows) + len(marked_cols)
-
-        if zero_count < dim:
-            cur_mat = adjust_matrix(cur_mat, marked_rows, marked_cols)
-
-    return ans_pos
+    return curr_ass
