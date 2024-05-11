@@ -1,6 +1,4 @@
 import torch
-from scipy.optimize import linear_sum_assignment
-import numpy as np
 from torch import nn
 from torch import optim
 from torch.utils.data import DataLoader
@@ -8,6 +6,7 @@ import torch.nn.functional as F
 from torchvision import transforms
 from torchvision.datasets import CocoDetection
 from torchvision.models import resnet50, ResNet50_Weights
+from auction_lap import auction_lap
 
 
 class DETR(nn.Module):
@@ -40,7 +39,7 @@ class DETR(nn.Module):
         pos = pos.unsqueeze(1).repeat(1, inputs.shape[0], 1)
         h = self.transformer(pos + h.flatten(2).permute(2, 0, 1),
                              self.query_pos.unsqueeze(1).repeat(1, inputs.shape[0], 1))
-        return self.linear_class(h).permute(1, 0, 2), self.linear_bbox(h).sigmoid().permute(1, 0, 2)
+        return self.linear_class(h).sigmoid().permute(1, 0, 2), self.linear_bbox(h).permute(1, 0, 2)
 
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -70,20 +69,16 @@ for images, targets in data_loader:
         classes_p, boxes_p = model(images)  # (1,100,92), (1,100,4)
         for class_preds, box_preds in zip(classes_p, boxes_p):
             class_targs = torch.cat([target['category_id'] for target in targets]).to(device)
-            class_targs = torch.cat([class_targs, torch.zeros(100 - len(class_targs), dtype=torch.int, device=device)])
-            class_targs = F.one_hot(class_targs, num_classes=92).float()
             box_targs = torch.stack([torch.cat(target['bbox']) for target in targets]).to(device)
-            box_targs = torch.cat([box_targs, torch.zeros(100 - len(box_targs), 4, device=device)])
-            loss_mat = [[(F.cross_entropy(class_pred, class_targ) + F.l1_loss(box_pred, box_targ))
-                         for class_targ, box_targ in zip(class_targs, box_targs)]
-                        for class_pred, box_pred in zip(class_preds, box_preds)]
-            loss_mat = torch.stack([torch.stack(row) for row in loss_mat])
-            assign = linear_sum_assignment(loss_mat.detach().cpu().numpy())
-            loss = torch.sum(loss_mat[assign])
+            loss_mat = [[F.l1_loss(box_pred, box_targ) + (-torch.log(class_pred[class_targ]))
+                         for class_pred, box_pred in zip(class_preds, box_preds)]
+                        for class_targ, box_targ in zip(class_targs, box_targs)]
+            loss_mat = torch.stack([torch.stack(row) for row in loss_mat]).float()
+            assign = auction_lap(loss_mat) # (5,)
+            loss = torch.sum(loss_mat[torch.arange(len(assign)), assign])
             print(loss)
             loss.backward()
             optimizer.step()
     except Exception as e:
-        print(targets)
         print(e)
         continue
