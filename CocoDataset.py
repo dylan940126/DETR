@@ -28,16 +28,15 @@ class CocoDataset(Dataset):
         if self.transform is not None:
             img = self.transform(img)
         img = img.to(self.device)
-        trans_x, trans_y = img.shape[-1], img.shape[-2]
 
         # get Annotations
         target = coco.loadAnns(ann_ids)
         if target:
             cat = [x['category_id'] for x in target]
-            bbox = [[x['bbox'][0] / img_x * trans_x,
-                     x['bbox'][1] / img_y * trans_y,
-                     x['bbox'][2] / img_x * trans_x,
-                     x['bbox'][3] / img_y * trans_y] for x in target]
+            bbox = [[x['bbox'][0] / img_x,
+                     x['bbox'][1] / img_y,
+                     x['bbox'][2] / img_x,
+                     x['bbox'][3] / img_y] for x in target]
             ## to tensor
             cat = torch.tensor(cat, device=self.device)
             bbox = torch.tensor(bbox, device=self.device)
