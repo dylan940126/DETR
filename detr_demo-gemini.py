@@ -1,18 +1,20 @@
 import torch
 from torch import optim
 from torch.utils.data import DataLoader
-import torch.nn.functional as F
 from torchvision import transforms
-from torchvision.datasets import CocoDetection
-from torchvision.models import resnet50, ResNet50_Weights
-from auction_lap import auction_lap
-
-
 from CocoDataset import CocoDataset, collate_fn
 from DETR import DETR
 
+batch_size = 48
+num_workers = 0
+num_classes = 91
+num_queries = 100
+hidden_dim = 256
+nheads = 8
+num_encoder_layers = 6
+num_decoder_layers = 6
+
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-# device = 'cpu'
 
 # Load COCO dataset
 transform = transforms.Compose([
@@ -23,10 +25,10 @@ transform = transforms.Compose([
 coco_train = CocoDataset(root='coco/images', annFile='coco/annotations/instances_val2017.json',
                          transform=transform, device=device)
 
-data_loader = DataLoader(coco_train, batch_size=48, shuffle=True, num_workers=0, collate_fn=collate_fn)
+data_loader = DataLoader(coco_train, batch_size=batch_size, shuffle=True, num_workers=num_workers, collate_fn=collate_fn)
 
 # Load model
-model = DETR(91, 256, 8, 6, 6)
+model = DETR(num_classes, hidden_dim, nheads, num_encoder_layers, num_decoder_layers, num_queries)
 model.train()
 model.to(device)
 
