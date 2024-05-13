@@ -11,7 +11,7 @@ class DETR(nn.Module):
         self.backbone = nn.Sequential(*list(resnet50(weights=ResNet50_Weights.DEFAULT).children())[:-2])
         self.conv = nn.Conv2d(2048, hidden_dim, 1)
         self.transformer = nn.Transformer(hidden_dim, nheads,
-                                          num_encoder_layers, num_decoder_layers)
+                                          num_encoder_layers, num_decoder_layers, batch_first=True)
         self.linear_class = nn.Linear(hidden_dim, num_classes + 1)
         self.linear_bbox = nn.Linear(hidden_dim, 4)
         self.query_pos = nn.Parameter(torch.rand(num_queries, hidden_dim))
@@ -28,7 +28,7 @@ class DETR(nn.Module):
             self.row_embed[:H].unsqueeze(1).repeat(1, W, 1),
         ], dim=-1)
         pos = pos.flatten(0, 1)
-        pos = pos.unsqueeze(1).repeat(1, batch_size, 1)
-        h = self.transformer(pos + h.flatten(2).permute(2, 0, 1),
-                             self.query_pos.unsqueeze(1).repeat(1, batch_size, 1))
-        return self.linear_class(h).permute(1, 0, 2), self.linear_bbox(h).permute(1, 0, 2)
+        pos = pos.unsqueeze(0).repeat(batch_size, 1, 1)
+        h = self.transformer(pos + h.flatten(2).permute(0, 2, 1),
+                             self.query_pos.unsqueeze(0).repeat(batch_size, 1, 1))
+        return self.linear_class(h), self.linear_bbox(h).sigmoid()

@@ -3,6 +3,7 @@ import torch
 from PIL import Image
 from pycocotools.coco import COCO
 from torch.utils.data import Dataset
+from functools import lru_cache
 
 
 class CocoDataset(Dataset):
@@ -14,6 +15,7 @@ class CocoDataset(Dataset):
         self.transform = transform
         self.device = device
 
+    @lru_cache(maxsize=1024)
     def __getitem__(self, index):
         coco = self.coco
         # get ids
