@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 from CocoDataset import CocoDataset, collate_fn
 from DETR import DETR
-from auction_lap import auction_lap
+from scipy.optimize import linear_sum_assignment
 
 
 class HungarianLoss(nn.Module):
@@ -15,8 +15,8 @@ class HungarianLoss(nn.Module):
         self.bboxLoss = nn.SmoothL1Loss(reduction='none')
 
     def forward(self, predict, target):
-        bat_pred_cat, bat_pred_bbox = predict # (48, 100, 92), (48, 100, 4)
-        bat_tar_cat, bat_tar_bbox = target # (48, 100), (48, 100, 4)
+        bat_pred_cat, bat_pred_bbox = predict  # (48, 100, 92), (48, 100, 4)
+        bat_tar_cat, bat_tar_bbox = target  # (48, 100), (48, 100, 4)
         # Compute loss matrix for matchs between predictions and targets
         # targets: loss_mat[i, j] = loss between pred[i] and tar[j]
         num_queries = bat_pred_cat.shape[1]
@@ -28,11 +28,11 @@ class HungarianLoss(nn.Module):
         bat_loss_mat = self.classLoss(bat_pred_cat.permute(0, 3, 1, 2), bat_tar_cat) + \
                        self.bboxLoss(bat_pred_bbox, bat_tar_bbox).sum(dim=-1) * mask  # (48, 100, 100)
         # Hungarian algorithm to match predictions and targets
-        bat_loss = torch.zeros((batch_size, num_queries), device=device)
-        for i, loss_mat in enumerate(bat_loss_mat):
-            assign = auction_lap(-loss_mat.detach())
-            bat_loss[i] = loss_mat[torch.arange(num_queries), assign]
-        return bat_loss # (48, 100)
+        bat_loss = torch.empty((batch_size, num_queries), device=device)
+        for i, loss_mat in enumerate(bat_loss_mat.detach().cpu().numpy()):
+            assign = linear_sum_assignment(loss_mat)
+            bat_loss[i] = bat_loss_mat[i, assign[0], assign[1]]
+        return bat_loss  # (48, 100)
 
 
 def train():
@@ -73,16 +73,17 @@ def train():
             bbox = bbox[bbox[:, 0] != 0]
             bbox = bbox * 128
             for box in bbox:
-                plt.gca().add_patch(plt.Rectangle((box[0], box[1]), box[2], box[3], fill=False, edgecolor='r', linewidth=1))
+                plt.gca().add_patch(
+                    plt.Rectangle((box[0], box[1]), box[2], box[3], fill=False, edgecolor='r', linewidth=1))
             plt.show()
 
 
 if __name__ == "__main__":
     # Parameters
     batch_size = 48
-    num_workers = 0
+    num_workers = 2
     num_classes = 91
-    num_queries = 50
+    num_queries = 100
     hidden_dim = 256
     nheads = 8
     num_encoder_layers = 6
@@ -95,6 +96,6 @@ if __name__ == "__main__":
     model = DETR(num_classes, hidden_dim, nheads, num_encoder_layers, num_decoder_layers, num_queries)
     model.to(device)
 
-    # torch.multiprocessing.set_start_method('spawn')  # good solution !!!!
+    torch.multiprocessing.set_start_method('spawn')  # good solution !!!!
     for _ in range(100):
         train()
