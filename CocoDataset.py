@@ -7,13 +7,14 @@ from functools import lru_cache
 
 
 class CocoDataset(Dataset):
-    def __init__(self, root, annFile, transform=None, category=[], device='cpu'):
+    def __init__(self, root, annFile, transform=None, category=[], device='cpu', num_queries=100):
         self.root = root
         self.coco = COCO(annFile)
         self.category_ids = self.coco.getCatIds(catNms=category)
-        self.ids = list(sorted(self.coco.imgs.keys()))
+        self.ids = list(sorted(self.coco.getImgIds(catIds=self.category_ids)))
         self.transform = transform
         self.device = device
+        self.num_queries = num_queries
 
     @lru_cache(maxsize=1024)
     def __getitem__(self, index):
@@ -43,11 +44,11 @@ class CocoDataset(Dataset):
             cat = torch.tensor(cat, device=self.device)
             bbox = torch.tensor(bbox, device=self.device)
             ## pad to 100
-            cat = torch.cat([cat, torch.zeros(100 - len(cat), device=self.device, dtype=torch.long)])
-            bbox = torch.cat([torch.tensor(bbox), torch.zeros(100 - len(bbox), 4, device=self.device)])
+            cat = torch.cat([cat, torch.zeros(self.num_queries - len(cat), device=self.device, dtype=torch.long)])
+            bbox = torch.cat([bbox, torch.zeros(self.num_queries - len(bbox), 4, device=self.device)])
         else:
-            cat = torch.zeros(100, device=self.device, dtype=torch.long)
-            bbox = torch.zeros(100, 4, device=self.device)
+            cat = torch.zeros(self.num_queries, device=self.device, dtype=torch.long)
+            bbox = torch.zeros(self.num_queries, 4, device=self.device)
         return img, (cat, bbox)
 
     def __len__(self):
@@ -59,4 +60,4 @@ def collate_fn(batch):
     img = torch.stack(tmp[0])
     cat = torch.stack([target[0] for target in tmp[1]])
     bbox = torch.stack([target[1] for target in tmp[1]])
-    return img, cat, bbox
+    return img, (cat, bbox)
