@@ -11,7 +11,7 @@ class CocoDataset(Dataset):
         self.root = root
         self.coco = COCO(annFile)
         self.category_ids = self.coco.getCatIds(catNms=category)
-        self.ids = list(sorted(self.coco.getImgIds(catIds=self.category_ids)))
+        self.ids = list(sorted(self.coco.getImgIds()))
         self.transform = transform
         self.device = device
         self.num_queries = num_queries
