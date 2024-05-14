@@ -84,6 +84,8 @@ def train(epoch=100):
                     plt.gca().add_patch(
                         plt.Rectangle((box[0], box[1]), box[2], box[3], fill=False, edgecolor='r', linewidth=1))
                 plt.show()
+        if _ % 5 == 0:
+            torch.save(model.state_dict(), f'checkpoint_{_}.pth')
 
 
 if __name__ == "__main__":
@@ -107,6 +109,9 @@ if __name__ == "__main__":
     # Load model
     model = DETR(num_classes, hidden_dim, nheads, num_encoder_layers, num_decoder_layers, num_queries)
     model.to(device)
+    path = input('Input model path: ')
+    if path != '':
+        model.load_state_dict(torch.load(path))
 
     torch.multiprocessing.set_start_method('forkserver')  # good solution !!!!
     for _ in range(100):
