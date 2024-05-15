@@ -16,7 +16,7 @@ class CocoDataset(Dataset):
         self.device = device
         self.num_queries = num_queries
 
-    @lru_cache(maxsize=1024)
+    # @lru_cache(maxsize=1024)
     def __getitem__(self, index):
         coco = self.coco
         # get ids
@@ -45,10 +45,11 @@ class CocoDataset(Dataset):
             bbox = torch.tensor(bbox, device=self.device)
             ## pad to 100
             cat = torch.cat([cat, torch.zeros(self.num_queries - len(cat), device=self.device, dtype=torch.long)])
-            bbox = torch.cat([bbox, torch.zeros(self.num_queries - len(bbox), 4, device=self.device)])
+            bbox = torch.cat(
+                [bbox, torch.tensor([[0, 0, 1, 1]], device=self.device).repeat(self.num_queries - len(bbox), 1)])
         else:
             cat = torch.zeros(self.num_queries, device=self.device, dtype=torch.long)
-            bbox = torch.zeros(self.num_queries, 4, device=self.device)
+            bbox = torch.tensor([[0, 0, 1, 1]], device=self.device).repeat(self.num_queries, 1)
         return img, (cat, bbox)
 
     def __len__(self):

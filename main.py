@@ -1,48 +1,12 @@
 import torch
-import torch.nn as nn
 from torch import optim
 from torch.utils.data import DataLoader
 from torchvision import transforms
-from CocoDataset import CocoDataset, collate_fn
-from DETR import DETR
-from scipy.optimize import linear_sum_assignment
-from concurrent.futures import ThreadPoolExecutor
 from torch.backends import cudnn
-
-
-class HungarianLoss(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.classLoss = nn.CrossEntropyLoss(reduction='none')
-        self.bboxLoss = nn.MSELoss(reduction='none')
-
-    def assign_loss(self, loss_mat):
-        assign = linear_sum_assignment(loss_mat.detach().cpu().numpy())
-        return assign
-
-    def forward(self, predict, target):
-        bat_pred_cat, bat_pred_bbox = predict  # (48, 100, 92), (48, 100, 4)
-        bat_tar_cat, bat_tar_bbox = target  # (48, 100), (48, 100, 4)
-        # Compute loss matrix for matchs between predictions and targets
-        # targets: loss_mat[i, j] = loss between pred[i] and tar[j]
-        num_queries = bat_pred_cat.shape[1]
-        bat_pred_cat = bat_pred_cat.unsqueeze(2).expand(-1, -1, num_queries, -1)  # (48, 100, 100, 92)
-        bat_tar_cat = bat_tar_cat.unsqueeze(1).expand(-1, num_queries, -1)  # (48, 100, 100)
-        bat_pred_bbox = bat_pred_bbox.unsqueeze(2).expand(-1, -1, num_queries, -1)  # (48, 100, 100, 4)
-        bat_tar_bbox = bat_tar_bbox.unsqueeze(1).expand(-1, num_queries, -1, -1)  # (48, 100, 100, 4)
-        mask = bat_tar_cat.detach() != 0
-        bat_loss_cat = self.classLoss(bat_pred_cat.permute(0, 3, 1, 2), bat_tar_cat) * 0.1
-        bat_loss_bbox = self.bboxLoss(bat_pred_bbox, bat_tar_bbox).sum(dim=-1) * mask  # (48, 100, 100)
-        bat_loss_mat = bat_loss_cat + bat_loss_bbox
-        # Hungarian algorithm to match predictions and targets
-        with ThreadPoolExecutor() as executor:
-            res = executor.map(self.assign_loss, bat_loss_mat)
-        res = list(res)
-        bat_loss = torch.stack([bat_loss_mat[i, res[i][0], res[i][1]] for i in range(len(res))])
-        print("cat Loss:", torch.stack([bat_loss_cat[i, res[i][0], res[i][1]] for i in range(len(res))]).mean().item())
-        print("bbox Loss:",
-              torch.stack([bat_loss_bbox[i, res[i][0], res[i][1]] for i in range(len(res))]).mean().item())
-        return bat_loss  # (48, 100)
+from MyCocoDataset import CocoDataset, collate_fn
+from MyDETR import DETR
+from MyHungarianLoss import HungarianLoss
+from MyVisualizer import plot
 
 
 def train(epoch=1):
@@ -76,22 +40,7 @@ def train(epoch=1):
             optimizer.step()
 
             if i % 10 == 0:
-                # show the first image and bbox
-                import matplotlib.pyplot as plt
-                import numpy as np
-                img = images[0].permute(1, 2, 0).detach().cpu().numpy()
-                plt.imshow(img)
-                bbox = predict[1][0].detach().cpu().numpy()
-                cls = predict[0][0].detach().cpu().numpy()
-                # dont print 0 class
-                bbox = [box for i, box in enumerate(bbox) if cls[i].argmax() != 0]
-                if len(bbox) > 0:
-                    bbox = np.stack(bbox)
-                    bbox = bbox * 128
-                    for box in bbox:
-                        plt.gca().add_patch(
-                            plt.Rectangle((box[0], box[1]), box[2], box[3], fill=False, edgecolor='r', linewidth=1))
-                plt.show()
+                plot(images, predict, target)
         if _ % 5 == 0:
             torch.save(model.state_dict(), f'checkpoint_{_}.pth')
 
