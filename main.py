@@ -8,12 +8,13 @@ from MyDETR import DETR
 from MyHungarianLoss import HungarianLoss
 from MyVisualizer import draw_bbox
 import matplotlib.pyplot as plt
+from torch.utils.tensorboard import SummaryWriter
 
 
 def train(epoch=1):
     # Load COCO dataset
     transform = transforms.Compose([
-        transforms.Resize((128, 128)),
+        transforms.Resize((512, 512)),
         transforms.ToTensor()
     ])
     coco_train = CocoDataset(root='coco/images', annFile='coco/annotations/instances_val2017.json',
@@ -25,8 +26,12 @@ def train(epoch=1):
     model.train()
 
     # Loss function and optimizer
-    hungarian_loss = HungarianLoss(bbox_weight=6.0)
-    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+    hungarian_loss = HungarianLoss(bbox_weight=0.3)
+    optimizer = optim.Adam(model.parameters(), lr=1e-2)
+
+    # Tensorboard
+    writer = SummaryWriter(log_dir='logs')
+    global_step = 0
 
     # Train model
     for round in range(epoch):
@@ -37,29 +42,32 @@ def train(epoch=1):
             bat_loss = hungarian_loss(predict, target)
             bat_loss = bat_loss.mean()
             bat_loss.backward()
+            writer.add_scalar('Loss', bat_loss.item(), global_step)
             print(f'Batch {i + 1} / {len(data_loader)}, Loss: {bat_loss.item()}')
             optimizer.step()
 
-            if i % 20 == 0:
+            if i % 5 == 0:
                 # Visualize
-                image = draw_bbox(images[0], predict[0][0].argmax(-1), predict[1][0], color='green')
-                image = draw_bbox(image, target[0][0], target[1][0], color='red')
-                plt.imshow(image.permute(1, 2, 0))
-                plt.show()
+                img_pred = draw_bbox(images[0], predict[0][0].argmax(-1), predict[1][0], color='green')
+                writer.add_image('Predict', img_pred, global_step)
+                img_targ = draw_bbox(images[0], target[0][0], target[1][0], color='red')
+                writer.add_image('Target', img_targ, global_step)
+            global_step += 1
         if round % 5 == 0:
             torch.save(model.state_dict(), f'checkpoint_{round}.pth')
+    writer.close()
 
 
 if __name__ == "__main__":
     # Parameters
-    batch_size = 48
+    batch_size = 8
     num_workers = 4
     num_classes = 91
     num_queries = 100
-    hidden_dim = 256
-    nheads = 8
-    num_encoder_layers = 6
-    num_decoder_layers = 6
+    hidden_dim = 128
+    nheads = 4
+    num_encoder_layers = 3
+    num_decoder_layers = 3
     epoch = 100
 
     # Device

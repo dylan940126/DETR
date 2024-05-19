@@ -38,14 +38,15 @@ class HungarianLoss(nn.Module):
         mask = bat_tar_cat.detach() != 0
         bat_loss_bbox *= mask
         # Combine cat and bbox loss
-        bat_loss_mat = bat_loss_cat + bat_loss_bbox
+        bat_loss_mat = bat_loss_bbox
         # Hungarian algorithm to match predictions and targets
         with ThreadPoolExecutor() as executor:
             res = executor.map(self.assign_loss, bat_loss_mat)
         res = list(res)
         # Compute final loss
-        loss_cat = torch.stack([bat_loss_cat[i, res[i][0], res[i][1]] for i in range(len(res))])
+        loss_cat = torch.stack([bat_loss_cat[i, res[i][0], res[i][1]] for i in range(len(res))]).mean(dim=-1)
         loss_bbox = torch.stack([bat_loss_bbox[i, res[i][0], res[i][1]] for i in range(len(res))])
+        loss_bbox = loss_bbox.sum(dim=-1) / ((loss_bbox != 0).sum(dim=-1) + 1e-7)
         bat_loss = loss_cat + loss_bbox
         print("Cat Loss: ", loss_cat.mean().item())
         print("BBox Loss: ", loss_bbox.mean().item())

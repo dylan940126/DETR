@@ -13,6 +13,8 @@ def draw_bbox(image, cat, bbox, color='green', bbox_format='cxcywh'):
         image = convert(image)
     W, H = image.shape[-2:]
     bbox = bbox[cat != 0]
+    if len(bbox) == 0:
+        return image
     cat = cat[cat != 0]
     bbox = bbox * torch.tensor([W, H, W, H], dtype=bbox.dtype)
     bbox = bbox.to(torch.int64)
