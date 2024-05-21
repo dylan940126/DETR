@@ -1,30 +1,33 @@
-import numpy as np
-from matplotlib import pyplot as plt
+import torch
+from torchvision.transforms import ConvertImageDtype
+from torchvision.ops import box_convert
+from torchvision.utils import draw_bounding_boxes
 
 
-def plot(images, predict, target):
-    scale = np.array([images.shape[3], images.shape[2], images.shape[3], images.shape[2]])
-    # show the first image and bbox
-    img = images[0].permute(1, 2, 0).detach().cpu().numpy()
-    plt.imshow(img)
-    bbox = predict[1][0].detach().cpu().numpy()
-    cls = predict[0][0].detach().cpu().numpy()
-    # dont print 0 class
-    bbox = [box for i, box in enumerate(bbox) if cls[i].argmax() != 0]
-    if len(bbox) > 0:
-        bbox = np.stack(bbox)
-        bbox = bbox * scale
-        for box in bbox:
-            plt.gca().add_patch(
-                plt.Rectangle((box[0], box[1]), box[2], box[3], fill=False, edgecolor='r', linewidth=1))
-    bbox = target[1][0].detach().cpu().numpy()
-    cls = target[0][0].detach().cpu().numpy()
-    # dont print 0 class
-    bbox = [box for i, box in enumerate(bbox) if cls[i] != 0]
-    if len(bbox) > 0:
-        bbox = np.stack(bbox)
-        bbox = bbox * scale
-        for box in bbox:
-            plt.gca().add_patch(
-                plt.Rectangle((box[0], box[1]), box[2], box[3], fill=False, edgecolor='b', linewidth=1))
-    plt.show()
+def plot(img, cat, bbox, color='green', bbox_format='cxcywh'):
+    """
+    Draw bounding boxes on an image.
+    This function returns a tensor in uint8 format.
+
+    :param img: tensor image (C, H, W), support uint8 and float32
+    :param cat: tensor category (N)
+    :param bbox: tensor bounding boxes (N, 4)
+    :param color: color of bounding boxes, default is 'green'
+    :param bbox_format: input format of bounding boxes, default is 'cxcywh'
+    :return: image with bounding boxes, tensor (C, H, W) uint8
+    """
+    convert = ConvertImageDtype(torch.uint8)
+    if img.dtype != torch.uint8:
+        img = convert(img)
+        w, h = img.shape[-2:]
+        bbox[:, [0, 2]] *= w
+        bbox[:, [1, 3]] *= h
+    bbox = bbox[cat != 0]
+    if len(bbox) == 0:
+        return img
+    cat = cat[cat != 0]
+    bbox = bbox.to(torch.int64)
+
+    bbox = box_convert(bbox, bbox_format, 'xyxy')
+    img = draw_bounding_boxes(img, bbox, colors=color, width=1)
+    return img

@@ -40,7 +40,7 @@ def train(epoch=1):
             optimizer.step()
 
             if i % 10 == 0:
-                plot(images, predict[0].argmax(-1), predict[1], device=device)
+                plot(images[0], predict[0][0].argmax(-1), predict[1][0])
         if _ % 5 == 0:
             torch.save(model.state_dict(), f'checkpoint_{_}.pth')
 
