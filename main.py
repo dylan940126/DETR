@@ -1,4 +1,5 @@
 import torch
+import psutil
 from torch import optim
 from torch.utils.data import DataLoader
 from torchvision import transforms
@@ -33,21 +34,20 @@ def train(epoch=1):
         for i, (images, target) in enumerate(data_loader):  # (48, 3, 128, 128), ((48, 100), (48, 100, 4))
             optimizer.zero_grad()
             predict = model(images)  # ((48, 100, 92), (48, 100, 4))
-            bat_loss = hungarian_loss(predict, target)
-            bat_loss = bat_loss.mean()
+            bat_loss, assign = hungarian_loss(target[0], target[1], predict[0], predict[1])
             bat_loss.backward()
             print(f'Batch {i + 1} / {len(data_loader)}, Loss: {bat_loss.item()}')
             optimizer.step()
 
             if i % 10 == 0:
-                plot(images, predict, target)
+                plot(images, predict[0].argmax(-1), predict[1], device=device)
         if _ % 5 == 0:
             torch.save(model.state_dict(), f'checkpoint_{_}.pth')
 
 
 if __name__ == "__main__":
     # Parameters
-    batch_size = 48
+    batch_size = 2
     num_workers = 4
     num_classes = 91
     num_queries = 100
@@ -57,11 +57,14 @@ if __name__ == "__main__":
     num_decoder_layers = 6
 
     # Device
-    if torch.cuda.is_available():
+    batt = psutil.sensors_battery()
+    if torch.cuda.is_available() and (batt is None or batt.power_plugged is True):
         device = torch.device('cuda')
         cudnn.benchmark = True
+        print(device)
     else:
         device = torch.device('cpu')
+        print(device)
 
     # Load model
     model = DETR(num_classes, hidden_dim, nheads, num_encoder_layers, num_decoder_layers, num_queries)
