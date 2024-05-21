@@ -4,8 +4,29 @@ import numpy
 import torch
 from scipy.optimize import linear_sum_assignment
 from torch import nn as nn
-from torchvision.ops import complete_box_iou_loss
+from torchvision.ops import distance_box_iou_loss
 from torchvision.ops import box_convert
+
+
+class MyBBoxLoss(nn.Module):
+    def __init__(self, weight1=1.0, weight2=1.0):
+        super().__init__()
+        self.loss_func1 = distance_box_iou_loss
+        self.loss_func2 = nn.SmoothL1Loss(reduction='none')
+        self.weight1 = weight1
+        self.weight2 = weight2
+
+    def forward(self, pred_bbox, targ_bbox):
+        """
+        Compute loss matrix for bounding boxes
+
+        :param pred_bbox: predictions of bounding boxes (B, M, 4)
+        :param targ_bbox: targets of bounding boxes (B, N, 4)
+        :return: loss matrix (B, N, M)
+        """
+        loss1 = self.loss_func1(pred_bbox, targ_bbox) * self.weight1
+        loss2 = self.loss_func2(pred_bbox, targ_bbox).mean(-1) * self.weight2
+        return loss1 + loss2
 
 
 class HungarianLoss(nn.Module):
@@ -19,7 +40,7 @@ class HungarianLoss(nn.Module):
         """
         super().__init__()
         self.classLoss = nn.CrossEntropyLoss(reduction='none')
-        self.bboxLoss = complete_box_iou_loss
+        self.bboxLoss = MyBBoxLoss()
         self.weight = bbox_weight
         self.bbox_format = bbox_format
 
@@ -136,8 +157,8 @@ class HungarianLoss(nn.Module):
 
         # compute loss
         loss_cat = self._cat_loss(targ_cat, pred_cat)  # (B,)
-        loss_bbox = self._bbox_loss(targ_bbox, pred_bbox, targ_cat)  # (B,)
-        loss = loss_cat + loss_bbox * self.weight  # (B,)
+        loss_bbox = self._bbox_loss(targ_bbox, pred_bbox, targ_cat) * self.weight  # (B,)
+        loss = loss_cat + loss_bbox  # (B,)
 
         print("Cat Loss: ", loss_cat.item())
         print("BBox Loss: ", loss_bbox.item())
