@@ -3,6 +3,7 @@ import torch
 from PIL import Image
 from pycocotools.coco import COCO
 from torch.utils.data import Dataset
+from torchvision.ops import box_convert
 from functools import lru_cache
 
 
@@ -43,13 +44,15 @@ class CocoDataset(Dataset):
             ## to tensor
             cat = torch.tensor(cat, device=self.device)
             bbox = torch.tensor(bbox, device=self.device)
+            ## bbox format: cx, cy, w, h
+            bbox = box_convert(bbox, 'xywh', 'cxcywh')
             ## pad to 100
             cat = torch.cat([cat, torch.zeros(self.num_queries - len(cat), device=self.device, dtype=torch.long)])
             bbox = torch.cat(
-                [bbox, torch.tensor([[0, 0, 1, 1]], device=self.device).repeat(self.num_queries - len(bbox), 1)])
+                [bbox, torch.tensor([[0, 0, 1e-7, 1e-7]], device=self.device).repeat(self.num_queries - len(bbox), 1)])
         else:
             cat = torch.zeros(self.num_queries, device=self.device, dtype=torch.long)
-            bbox = torch.tensor([[0, 0, 1, 1]], device=self.device).repeat(self.num_queries, 1)
+            bbox = torch.tensor([[0, 0, 1e-7, 1e-7]], device=self.device).repeat(self.num_queries, 1)
         return img, (cat, bbox)
 
     def __len__(self):
