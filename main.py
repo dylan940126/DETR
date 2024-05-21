@@ -1,4 +1,5 @@
 import torch
+import psutil
 from torch import optim
 from torch.utils.data import DataLoader
 from torchvision import transforms
@@ -6,9 +7,8 @@ from torch.backends import cudnn
 from MyCocoDataset import CocoDataset, collate_fn
 from MyDETR import DETR
 from MyHungarianLoss import HungarianLoss
-from MyVisualizer import draw_bbox
-import matplotlib.pyplot as plt
 from torch.utils.tensorboard import SummaryWriter
+from MyVisualizer import draw_bbox
 
 
 def train(epoch=1):
@@ -26,7 +26,7 @@ def train(epoch=1):
     model.train()
 
     # Loss function and optimizer
-    hungarian_loss = HungarianLoss(bbox_weight=0.3)
+    hungarian_loss = HungarianLoss()
     optimizer = optim.Adam(model.parameters(), lr=1e-2)
 
     # Tensorboard
@@ -39,8 +39,7 @@ def train(epoch=1):
         for i, (images, target) in enumerate(data_loader):  # (48, 3, 128, 128), ((48, 100), (48, 100, 4))
             optimizer.zero_grad()
             predict = model(images)  # ((48, 100, 92), (48, 100, 4))
-            bat_loss = hungarian_loss(predict, target)
-            bat_loss = bat_loss.mean()
+            bat_loss, assign = hungarian_loss(target[0], target[1], predict[0], predict[1])
             bat_loss.backward()
             writer.add_scalar('Loss', bat_loss.item(), global_step)
             print(f'Batch {i + 1} / {len(data_loader)}, Loss: {bat_loss.item()}')
@@ -71,11 +70,14 @@ if __name__ == "__main__":
     epoch = 100
 
     # Device
-    if torch.cuda.is_available():
+    batt = psutil.sensors_battery()
+    if torch.cuda.is_available() and (batt is None or batt.power_plugged is True):
         device = torch.device('cuda')
         cudnn.benchmark = True
+        print(device)
     else:
         device = torch.device('cpu')
+        print(device)
 
     # Load model
     model = DETR(num_classes, hidden_dim, nheads, num_encoder_layers, num_decoder_layers, num_queries)

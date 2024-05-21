@@ -4,7 +4,7 @@ from torchvision.ops import box_convert
 from torchvision.utils import draw_bounding_boxes
 
 
-def plot(img, cat, bbox, color='green', bbox_format='cxcywh'):
+def draw_bbox(img, cat, bbox, color='green', bbox_format='cxcywh'):
     """
     Draw bounding boxes on an image.
     This function returns a tensor in uint8 format.
