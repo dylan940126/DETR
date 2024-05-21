@@ -26,8 +26,8 @@ def train(epoch=1):
     model.train()
 
     # Loss function and optimizer
-    hungarian_loss = HungarianLoss()
-    optimizer = optim.Adam(model.parameters(), lr=1e-2)
+    hungarian_loss = HungarianLoss(bbox_weight=0.2)
+    optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
     # Tensorboard
     writer = SummaryWriter(log_dir='logs')
@@ -47,10 +47,12 @@ def train(epoch=1):
 
             if i % 5 == 0:
                 # Visualize
-                img_pred = draw_bbox(images[0], predict[0][0].argmax(-1), predict[1][0], color='green')
+                img_pred = draw_bbox(images[0], target[0][0], predict[1][0, assign[0]], color='green')
+                # img_pred = draw_bbox(img_pred, predict[0][0].argmax(dim=-1), predict[1][0],
+                #                      color='blue', filter_no_object=False)
                 writer.add_image('Predict', img_pred, global_step)
-                img_targ = draw_bbox(images[0], target[0][0], target[1][0], color='red')
-                writer.add_image('Target', img_targ, global_step)
+                # img_targ = draw_bbox(images[0], target[0][0], target[1][0], color='red')
+                # writer.add_image('Target', img_targ, global_step)
             global_step += 1
         if round % 5 == 0:
             torch.save(model.state_dict(), f'checkpoint_{round}.pth')
