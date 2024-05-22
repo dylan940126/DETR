@@ -8,7 +8,7 @@ from MyCocoDataset import CocoDataset, collate_fn
 from MyDETR import DETR
 from MyHungarianLoss import HungarianLoss
 from torch.utils.tensorboard import SummaryWriter
-from MyVisualizer import draw_bbox
+from MyVisualizer import MyVisualizer
 
 
 def train(epoch=1):
@@ -26,16 +26,19 @@ def train(epoch=1):
     model.train()
 
     # Loss function and optimizer
-    hungarian_loss = HungarianLoss(bbox_weight=0.2)
+    hungarian_loss = HungarianLoss(cost_weight=(1.0, 1.5), loss_weight=(1.0, 0.8))
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
     # Tensorboard
     writer = SummaryWriter(log_dir='logs')
     global_step = 0
 
+    # Visualizer
+    visualizer = MyVisualizer(coco_train.coco.cats)
+
     # Train model
     for round in range(epoch):
-        print(f'Epoch {round + 1}')
+        print(f'Epoch {round}')
         for i, (images, target) in enumerate(data_loader):  # (48, 3, 128, 128), ((48, 100), (48, 100, 4))
             optimizer.zero_grad()
             predict = model(images)  # ((48, 100, 92), (48, 100, 4))
@@ -47,14 +50,14 @@ def train(epoch=1):
 
             if i % 5 == 0:
                 # Visualize
-                img_pred = draw_bbox(images[0], target[0][0], predict[1][0, assign[0]], color='green')
-                # img_pred = draw_bbox(img_pred, predict[0][0].argmax(dim=-1), predict[1][0],
-                #                      color='blue', filter_no_object=False)
+                img_pred = visualizer.draw_bbox(images[0], predict[0][0].argmax(dim=-1), predict[1][0],
+                                                color='blue')
+                # img_pred = visualizer.draw_bbox(images[0], target[0][0], predict[1][0, assign[0]], color='green')
                 writer.add_image('Predict', img_pred, global_step)
-                # img_targ = draw_bbox(images[0], target[0][0], target[1][0], color='red')
+                # img_targ = visualizer.draw_bbox(images[0], target[0][0], target[1][0], color='red')
                 # writer.add_image('Target', img_targ, global_step)
             global_step += 1
-        if round % 5 == 0:
+        if round % 1 == 0:
             torch.save(model.state_dict(), f'checkpoint_{round}.pth')
     writer.close()
 
@@ -66,7 +69,7 @@ if __name__ == "__main__":
     num_classes = 91
     num_queries = 100
     hidden_dim = 128
-    nheads = 4
+    nheads = 8
     num_encoder_layers = 3
     num_decoder_layers = 3
     epoch = 100
@@ -76,10 +79,9 @@ if __name__ == "__main__":
     if torch.cuda.is_available() and (batt is None or batt.power_plugged is True):
         device = torch.device('cuda')
         cudnn.benchmark = True
-        print(device)
     else:
         device = torch.device('cpu')
-        print(device)
+    print(device)
 
     # Load model
     model = DETR(num_classes, hidden_dim, nheads, num_encoder_layers, num_decoder_layers, num_queries)

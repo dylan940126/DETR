@@ -48,11 +48,10 @@ class CocoDataset(Dataset):
             bbox = box_convert(bbox, 'xywh', 'cxcywh')
             ## pad to 100
             cat = torch.cat([cat, torch.zeros(self.num_queries - len(cat), device=self.device, dtype=torch.long)])
-            bbox = torch.cat(
-                [bbox, torch.tensor([[0, 0, 1e-7, 1e-7]], device=self.device).repeat(self.num_queries - len(bbox), 1)])
+            bbox = torch.cat([bbox, torch.ones(self.num_queries - len(bbox), 4, device=self.device)])
         else:
             cat = torch.zeros(self.num_queries, device=self.device, dtype=torch.long)
-            bbox = torch.tensor([[0, 0, 1e-7, 1e-7]], device=self.device).repeat(self.num_queries, 1)
+            bbox = torch.ones(self.num_queries, 4, device=self.device)
         return img, (cat, bbox)
 
     def __len__(self):
