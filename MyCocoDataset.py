@@ -8,13 +8,14 @@ from functools import lru_cache
 
 
 class CocoDataset(Dataset):
-    def __init__(self, root, annFile, transform=None, category=[], device='cpu', num_queries=100):
+    def __init__(self, root, annFile, transform=None, category=None, num_queries=100):
+        if category is None:
+            category = []
         self.root = root
         self.coco = COCO(annFile)
         self.category_ids = self.coco.getCatIds(catNms=category)
         self.ids = list(sorted(self.coco.getImgIds()))
         self.transform = transform
-        self.device = device
         self.num_queries = num_queries
 
     # @lru_cache(maxsize=1024)
@@ -31,7 +32,6 @@ class CocoDataset(Dataset):
         img = Image.open(os.path.join(self.root, path)).convert('RGB')
         if self.transform is not None:
             img = self.transform(img)
-        img = img.to(self.device)
 
         # get Annotations
         target = coco.loadAnns(ann_ids)
@@ -42,16 +42,16 @@ class CocoDataset(Dataset):
                      x['bbox'][2] / img_x,
                      x['bbox'][3] / img_y] for x in target]
             ## to tensor
-            cat = torch.tensor(cat, device=self.device)
-            bbox = torch.tensor(bbox, device=self.device)
+            cat = torch.tensor(cat)
+            bbox = torch.tensor(bbox)
             ## bbox format: cx, cy, w, h
             bbox = box_convert(bbox, 'xywh', 'cxcywh')
             ## pad to 100
-            cat = torch.cat([cat, torch.zeros(self.num_queries - len(cat), device=self.device, dtype=torch.long)])
-            bbox = torch.cat([bbox, torch.ones(self.num_queries - len(bbox), 4, device=self.device)])
+            cat = torch.cat([cat, torch.zeros(self.num_queries - len(cat), dtype=torch.long)])
+            bbox = torch.cat([bbox, torch.ones(self.num_queries - len(bbox), 4)])
         else:
-            cat = torch.zeros(self.num_queries, device=self.device, dtype=torch.long)
-            bbox = torch.ones(self.num_queries, 4, device=self.device)
+            cat = torch.zeros(self.num_queries, dtype=torch.long)
+            bbox = torch.ones(self.num_queries, 4)
         return img, (cat, bbox)
 
     def __len__(self):

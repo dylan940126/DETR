@@ -131,14 +131,14 @@ class HungarianLoss(nn.Module):
         loss_cat = self.classLoss(pred_cat, targ_cat)  # (B * N,)x
         return loss_cat.mean()
 
-    def forward(self, targ_cat: torch.Tensor, targ_bbox: torch.Tensor, pred_cat: torch.Tensor, pred_bbox: torch.Tensor):
+    def forward(self, pred_cat: torch.Tensor, pred_bbox: torch.Tensor, targ_cat: torch.Tensor, targ_bbox: torch.Tensor):
         """
         Calculate cost matrix, assign predictions to targets, and compute loss.
 
-        :param targ_cat: targets category (B, N)
-        :param targ_bbox: targets bounding boxes (B, N, 4)
         :param pred_cat: predictions category (B, M, C)
         :param pred_bbox: predictions bounding boxes (B, M, 4)
+        :param targ_cat: targets category (B, N)
+        :param targ_bbox: targets bounding boxes (B, N, 4)
         :return: final loss
         """
         # compute cost matrix

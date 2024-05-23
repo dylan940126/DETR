@@ -18,9 +18,9 @@ def train(epoch=1):
         transforms.ToTensor()
     ])
     coco_train = CocoDataset(root='coco/images', annFile='coco/annotations/instances_val2017.json',
-                             transform=transform, device=device, category=[], num_queries=num_queries)
+                             transform=transform, category=[], num_queries=num_queries)
     data_loader = DataLoader(coco_train, batch_size=batch_size, shuffle=True, num_workers=num_workers,
-                             collate_fn=collate_fn)
+                             collate_fn=collate_fn, pin_memory=True)
 
     # Set model to training mode
     model.train()
@@ -39,10 +39,14 @@ def train(epoch=1):
     # Train model
     for round in range(epoch):
         print(f'Epoch {round}')
-        for i, (images, target) in enumerate(data_loader):  # (48, 3, 128, 128), ((48, 100), (48, 100, 4))
+        for i, (images, target) in enumerate(data_loader):
+            # preprocess
+            images = images.to(device)  # (B, 3, 512, 512)
+            targ_cat = target[0].to(device)  # (B, 100)
+            targ_bbox = target[1].to(device)  # (B, 100, 4)
             optimizer.zero_grad()
-            predict = model(images)  # ((48, 100, 92), (48, 100, 4))
-            bat_loss, assign = hungarian_loss(target[0], target[1], predict[0], predict[1])
+            pred_cat, pred_bbox = model(images)  # (48, 100, 91), (48, 100, 4)
+            bat_loss, assign = hungarian_loss(pred_cat, pred_bbox, targ_cat, targ_bbox)
             bat_loss.backward()
             writer.add_scalar('Loss', bat_loss.item(), global_step)
             print(f'Batch {i + 1} / {len(data_loader)}, Loss: {bat_loss.item()}')
@@ -50,7 +54,7 @@ def train(epoch=1):
 
             if i % 5 == 0:
                 # Visualize
-                img_pred = visualizer.draw_bbox(images[0], predict[0][0].argmax(dim=-1), predict[1][0],
+                img_pred = visualizer.draw_bbox(images[0], pred_cat[0].argmax(dim=-1), pred_bbox[0],
                                                 color='blue')
                 # img_pred = visualizer.draw_bbox(images[0], target[0][0], predict[1][0, assign[0]], color='green')
                 writer.add_image('Predict', img_pred, global_step)
@@ -64,14 +68,14 @@ def train(epoch=1):
 
 if __name__ == "__main__":
     # Parameters
-    batch_size = 8
+    batch_size = 64
     num_workers = 4
     num_classes = 91
     num_queries = 100
     hidden_dim = 128
     nheads = 8
-    num_encoder_layers = 3
-    num_decoder_layers = 3
+    num_encoder_layers = 6
+    num_decoder_layers = 6
     epoch = 100
 
     # Device
