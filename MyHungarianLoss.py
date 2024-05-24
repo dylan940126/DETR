@@ -9,12 +9,12 @@ from torchvision.ops import box_convert
 
 
 class MyBBoxLoss(nn.Module):
-    def __init__(self, weight1=1.0, weight2=1.0):
+    def __init__(self, cost_iou=1.0, cost_l1=1.0):
         super().__init__()
-        self.loss_func1 = generalized_box_iou_loss
-        self.loss_func2 = nn.L1Loss(reduction='none')
-        self.weight1 = weight1
-        self.weight2 = weight2
+        self.loss_iou = generalized_box_iou_loss
+        self.loss_l1 = nn.L1Loss(reduction='none')
+        self.cost_iou = cost_iou
+        self.cost_l1 = cost_l1
 
     def forward(self, pred_bbox, targ_bbox):
         """
@@ -24,14 +24,14 @@ class MyBBoxLoss(nn.Module):
         :param targ_bbox: targets of bounding boxes (B, N, 4)
         :return: loss matrix (B, N, M)
         """
-        loss1 = self.loss_func1(pred_bbox, targ_bbox) * self.weight1
-        loss2 = self.loss_func2(pred_bbox, targ_bbox).mean(-1) * self.weight2
+        loss1 = self.loss_iou(pred_bbox, targ_bbox) * self.cost_iou
+        loss2 = self.loss_l1(pred_bbox, targ_bbox).mean(-1) * self.cost_l1
         print(f"Loss1: {loss1.mean().item():.4f} Loss2: {loss2.mean().item():.4f}")
         return loss1 + loss2
 
 
 class HungarianLoss(nn.Module):
-    def __init__(self, cost_weight=1.0, loss_weight=1.0, bbox_format='cxcywh'):
+    def __init__(self, bbox_format='cxcywh', cost_iou=2.0, cost_l1=5.0, cost_cat=1.0, loss_cat=1.0):
         """
         Hungarian Loss for DETR
 
@@ -41,10 +41,12 @@ class HungarianLoss(nn.Module):
         """
         super().__init__()
         self.classLoss = nn.CrossEntropyLoss(reduction='none')
-        self.bboxLoss = MyBBoxLoss(weight1=1.0, weight2=1.0)
-        self.cat_cost_w, self.bbox_cost_w = cost_weight
-        self.cat_loss_w, self.bbox_loss_w = loss_weight
+        self.bboxLoss = MyBBoxLoss(cost_iou, cost_l1)
         self.bbox_format = bbox_format
+        self.cost_iou = cost_iou
+        self.cost_l1 = cost_l1
+        self.cost_cat = cost_cat
+        self.loss_cat = loss_cat
 
     @staticmethod
     def _assign(loss_mat):
@@ -70,7 +72,7 @@ class HungarianLoss(nn.Module):
         """
         pred_cat = pred_cat.softmax(dim=-1)  # (B, M, C)
         cat_cost = 1 - torch.stack([pred_cat[i, :, targ_cat[i]] for i in range(pred_cat.shape[0])]).mT  # (B, N, M)
-        return cat_cost
+        return cat_cost * self.cost_cat
 
     def _bbox_cost(self, targ_bbox: torch.Tensor, pred_bbox: torch.Tensor, targ_cat: torch.Tensor):
         """
@@ -97,6 +99,19 @@ class HungarianLoss(nn.Module):
         cost_bbox *= mask
         return cost_bbox
 
+    def _cat_loss(self, targ_cat: torch.Tensor, pred_cat: torch.Tensor):
+        """
+        Compute final loss according to assignment
+
+        :param targ_cat: targets category (B, N)
+        :param pred_cat: predictions category (B, M, C)
+        :return: final loss (B,)
+        """
+        pred_cat = pred_cat.flatten(0, 1)  # (B * N, C)
+        targ_cat = targ_cat.flatten()  # (B * N,)
+        loss_cat = self.classLoss(pred_cat, targ_cat)  # (B * N,)x
+        return loss_cat.mean()
+
     def _bbox_loss(self, targ_bbox: torch.Tensor, pred_bbox: torch.Tensor, targ_cat: torch.Tensor):
         """
         Compute final loss according to assignment
@@ -116,20 +131,7 @@ class HungarianLoss(nn.Module):
         loss_bbox = self.bboxLoss(pred_bbox, targ_bbox)  # (B * N,)
         mask = (targ_cat != 0).flatten()  # (B * N,)
         loss_bbox[~mask] = 0
-        return loss_bbox.sum() / mask.sum()
-
-    def _cat_loss(self, targ_cat: torch.Tensor, pred_cat: torch.Tensor):
-        """
-        Compute final loss according to assignment
-
-        :param targ_cat: targets category (B, N)
-        :param pred_cat: predictions category (B, M, C)
-        :return: final loss (B,)
-        """
-        pred_cat = pred_cat.flatten(0, 1)  # (B * N, C)
-        targ_cat = targ_cat.flatten()  # (B * N,)
-        loss_cat = self.classLoss(pred_cat, targ_cat)  # (B * N,)x
-        return loss_cat.mean()
+        return loss_bbox.sum() / mask.sum() * self.loss_cat
 
     def forward(self, pred_cat: torch.Tensor, pred_bbox: torch.Tensor, targ_cat: torch.Tensor, targ_bbox: torch.Tensor):
         """
@@ -143,9 +145,9 @@ class HungarianLoss(nn.Module):
         """
         # compute cost matrix
         with torch.no_grad():
-            cat_cost = self._cat_cost(targ_cat, pred_cat) * self.cat_cost_w  # (B, N, M)
+            cat_cost = self._cat_cost(targ_cat, pred_cat)  # (B, N, M)
             # cannot overwrite the original tensor since requires grad
-            bbox_cost = self._bbox_cost(targ_bbox, pred_bbox, targ_cat) * self.bbox_cost_w  # (B, N, M)
+            bbox_cost = self._bbox_cost(targ_bbox, pred_bbox, targ_cat)  # (B, N, M)
             cost_mat = cat_cost + bbox_cost  # (B, N, M)
 
             # Hungarian algorithm to match predictions and targets
@@ -160,8 +162,8 @@ class HungarianLoss(nn.Module):
         pred_bbox = pred_bbox[torch.arange(pred_bbox.shape[0]).unsqueeze(-1), assign]  # (B, N, 4)
 
         # compute loss
-        loss_cat = self._cat_loss(targ_cat, pred_cat) * self.cat_loss_w  # (B,)
-        loss_bbox = self._bbox_loss(targ_bbox, pred_bbox, targ_cat) * self.bbox_loss_w  # (B,)
+        loss_cat = self._cat_loss(targ_cat, pred_cat)  # (B,)
+        loss_bbox = self._bbox_loss(targ_bbox, pred_bbox, targ_cat)  # (B,)
         loss = loss_cat + loss_bbox  # (B,)
 
         print(f"Cat Loss: {loss_cat.mean().item():.4f} BBox Loss: {loss_bbox.mean().item():.4f}")

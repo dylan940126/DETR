@@ -26,7 +26,7 @@ def train(epoch=1):
     model.train()
 
     # Loss function and optimizer
-    hungarian_loss = HungarianLoss(cost_weight=(1.0, 1.5), loss_weight=(1.0, 0.8))
+    hungarian_loss = HungarianLoss(cost_iou=cost_iou, cost_l1=cost_l1, cost_cat=cost_cat, loss_cat=loss_cat)
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
     # Tensorboard
@@ -68,7 +68,7 @@ def train(epoch=1):
 
 if __name__ == "__main__":
     # Parameters
-    batch_size = 64
+    batch_size = 8
     num_workers = 4
     num_classes = 91
     num_queries = 100
@@ -76,7 +76,11 @@ if __name__ == "__main__":
     nheads = 8
     num_encoder_layers = 6
     num_decoder_layers = 6
-    epoch = 100
+    epoch = 400
+    cost_iou = 2.0
+    cost_l1 = 5.0
+    cost_cat = 1.0
+    loss_cat = 1.0
 
     # Device
     batt = psutil.sensors_battery()
