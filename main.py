@@ -27,7 +27,7 @@ def train(epoch=1):
 
     # Loss function and optimizer
     hungarian_loss = HungarianLoss(cost_iou=cost_iou, cost_l1=cost_l1, cost_cat=cost_cat, loss_cat=loss_cat)
-    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+    optimizer = optim.Adam(model.parameters(), lr=2e-4)
 
     # Tensorboard
     writer = SummaryWriter(log_dir='logs')
@@ -52,14 +52,14 @@ def train(epoch=1):
             print(f'Batch {i + 1} / {len(data_loader)}, Loss: {bat_loss.item()}')
             optimizer.step()
 
-            if i % 5 == 0:
+            if i % 20 == 0:
                 # Visualize
-                img_pred = visualizer.draw_bbox(images[0], pred_cat[0].argmax(dim=-1), pred_bbox[0],
+                img_pred = visualizer.draw_bbox(images[0], targ_cat[0], pred_bbox[0, assign[0]], color='green')
+                img_pred = visualizer.draw_bbox(img_pred, pred_cat[0].argmax(dim=-1), pred_bbox[0],
                                                 color='blue')
-                # img_pred = visualizer.draw_bbox(images[0], target[0][0], predict[1][0, assign[0]], color='green')
                 writer.add_image('Predict', img_pred, global_step)
-                # img_targ = visualizer.draw_bbox(images[0], target[0][0], target[1][0], color='red')
-                # writer.add_image('Target', img_targ, global_step)
+                img_targ = visualizer.draw_bbox(images[0], target[0][0], target[1][0], color='red')
+                writer.add_image('Target', img_targ, global_step)
             global_step += 1
         if round % 1 == 0:
             torch.save(model.state_dict(), f'checkpoint_{round}.pth')
@@ -68,19 +68,19 @@ def train(epoch=1):
 
 if __name__ == "__main__":
     # Parameters
-    batch_size = 8
-    num_workers = 4
+    batch_size = 4
+    num_workers = 2
     num_classes = 91
     num_queries = 100
     hidden_dim = 128
     nheads = 8
     num_encoder_layers = 6
     num_decoder_layers = 6
-    epoch = 400
-    cost_iou = 2.0
-    cost_l1 = 5.0
-    cost_cat = 1.0
-    loss_cat = 1.0
+    epoch = 100
+    cost_iou = 0.15
+    cost_l1 = 1.6
+    cost_cat = 0.6
+    loss_cat = 2.0
 
     # Device
     batt = psutil.sensors_battery()
