@@ -24,6 +24,9 @@ class MyVisualizer:
         """
         cvt_in = ConvertImageDtype(torch.uint8)
         cvt_out = ConvertImageDtype(torch.float32)
+        img = img.clone()
+        bbox = bbox.clone()
+        cat = cat.clone()
         img = cvt_in(img)
         w, h = img.shape[-2:]
         bbox[:, [0, 2]] *= w

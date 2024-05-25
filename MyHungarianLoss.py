@@ -43,8 +43,6 @@ class HungarianLoss(nn.Module):
         self.classLoss = nn.CrossEntropyLoss(reduction='none')
         self.bboxLoss = MyBBoxLoss(cost_iou, cost_l1)
         self.bbox_format = bbox_format
-        self.cost_iou = cost_iou
-        self.cost_l1 = cost_l1
         self.cost_cat = cost_cat
         self.loss_cat = loss_cat
 
@@ -110,7 +108,7 @@ class HungarianLoss(nn.Module):
         pred_cat = pred_cat.flatten(0, 1)  # (B * N, C)
         targ_cat = targ_cat.flatten()  # (B * N,)
         loss_cat = self.classLoss(pred_cat, targ_cat)  # (B * N,)x
-        return loss_cat.mean()
+        return loss_cat.mean() * self.loss_cat
 
     def _bbox_loss(self, targ_bbox: torch.Tensor, pred_bbox: torch.Tensor, targ_cat: torch.Tensor):
         """
@@ -131,7 +129,7 @@ class HungarianLoss(nn.Module):
         loss_bbox = self.bboxLoss(pred_bbox, targ_bbox)  # (B * N,)
         mask = (targ_cat != 0).flatten()  # (B * N,)
         loss_bbox[~mask] = 0
-        return loss_bbox.sum() / mask.sum() * self.loss_cat
+        return loss_bbox.sum() / (mask.sum() + 1e-7)
 
     def forward(self, pred_cat: torch.Tensor, pred_bbox: torch.Tensor, targ_cat: torch.Tensor, targ_bbox: torch.Tensor):
         """
