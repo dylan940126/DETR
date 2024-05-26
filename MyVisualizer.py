@@ -9,7 +9,7 @@ class MyVisualizer:
         self.cat_names = {c['id']: c['name'] for c in cat_names.values()}
         self.cat_names[0] = 'no object'
 
-    def draw_bbox(self, img, cat, bbox, color='green', bbox_format='cxcywh', filter_no_object=True):
+    def draw_bbox(self, img, cat, bbox, mask_cat=None, color='green', bbox_format='cxcywh'):
         """
         Draw bounding boxes on an image.
         This function returns a tensor in uint8 format.
@@ -17,11 +17,13 @@ class MyVisualizer:
         :param img: tensor image (C, H, W), support uint8 and float32
         :param cat: tensor category (N)
         :param bbox: tensor bounding boxes (N, 4)
+        :param mask_cat: tensor mask category (N), default is None
         :param color: color of bounding boxes, default is 'green'
         :param bbox_format: input format of bounding boxes, default is 'cxcywh'
-        :param filter_no_object: filter out no object, default is True
         :return: image with bounding boxes, tensor (C, H, W) uint8
         """
+        if mask_cat is None:
+            mask_cat = cat
         cvt_in = ConvertImageDtype(torch.uint8)
         cvt_out = ConvertImageDtype(torch.float32)
         img = img.clone()
@@ -31,9 +33,9 @@ class MyVisualizer:
         w, h = img.shape[-2:]
         bbox[:, [0, 2]] *= w
         bbox[:, [1, 3]] *= h
-        if filter_no_object:
-            bbox = bbox[cat != 0]
-            cat = cat[cat != 0]
+        if mask_cat is not None:
+            bbox = bbox[mask_cat != 0]
+            cat = cat[mask_cat != 0]
         if len(bbox) == 0:
             return img
         bbox = bbox.to(torch.int64)

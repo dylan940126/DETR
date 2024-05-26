@@ -5,13 +5,13 @@ from torchvision.models import resnet50, ResNet50_Weights
 
 class DETR(nn.Module):
     def __init__(self, num_classes, hidden_dim, nheads,
-                 num_encoder_layers, num_decoder_layers, num_queries):
+                 num_encoder_layers, num_decoder_layers, num_queries, dropout=0.1):
         super().__init__()
         # We take only convolutional layers from ResNet-50 model
         self.backbone = nn.Sequential(*list(resnet50(weights=ResNet50_Weights.DEFAULT).children())[:-2])
         self.conv = nn.Conv2d(2048, hidden_dim, 1)
         self.transformer = nn.Transformer(hidden_dim, nheads,
-                                          num_encoder_layers, num_decoder_layers, batch_first=True)
+                                          num_encoder_layers, num_decoder_layers, batch_first=True, dropout=dropout)
         self.linear_class = nn.Linear(hidden_dim, num_classes + 1)
         self.linear_bbox = nn.Linear(hidden_dim, 4)
         self.query_pos = nn.Parameter(torch.rand(num_queries, hidden_dim))
