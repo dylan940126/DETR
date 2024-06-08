@@ -30,7 +30,7 @@ class MyVisualizer:
         bbox = bbox.clone()
         cat = cat.clone()
         img = cvt_in(img)
-        w, h = img.shape[-2:]
+        h, w = img.shape[-2:]
         bbox[:, [0, 2]] *= w
         bbox[:, [1, 3]] *= h
         if mask_cat is not None:
