@@ -116,18 +116,18 @@ if __name__ == "__main__":
     num_workers = 2
     num_classes = 91
     num_queries = 100
-    hidden_dim = 128
-    nheads = 8
-    num_encoder_layers = 6
-    num_decoder_layers = 6
+    hidden_dim = 64
+    nheads = 4
+    num_encoder_layers = 3
+    num_decoder_layers = 3
     dropout = 0
-    epoch = 400
+    epoch = 250
     cost_iou = 2.0
     cost_l1 = 5.0
     cost_cat = 2.0
     loss_cat = 10.0
     lr = 1e-4
-    lr_backbone = 1e-4
+    lr_backbone = 1e-5
     step_size = 200
 
     # Device
