@@ -52,7 +52,7 @@ class CocoDataset(Dataset):
         else:
             cat = torch.zeros(self.num_queries, dtype=torch.long)
             bbox = torch.ones(self.num_queries, 4)
-        return img, (cat, bbox)
+        return img_id, img, cat, bbox
 
     def __len__(self):
         return len(self.ids)
@@ -60,7 +60,8 @@ class CocoDataset(Dataset):
 
 def collate_fn(batch):
     tmp = list(zip(*batch))
-    img = torch.stack(tmp[0])
-    cat = torch.stack([target[0] for target in tmp[1]])
-    bbox = torch.stack([target[1] for target in tmp[1]])
-    return img, (cat, bbox)
+    img_id = [x for x in tmp[0]]
+    img = torch.stack([x for x in tmp[1]])
+    cat = torch.stack([x for x in tmp[2]])
+    bbox = torch.stack([x for x in tmp[3]])
+    return (img_id, img), (cat, bbox)

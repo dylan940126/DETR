@@ -62,7 +62,7 @@ def train(epoch=1):
         train_loader_tqdm = tqdm(train_loader)
         for i, (images, target) in enumerate(train_loader_tqdm):
             # preprocess
-            images = images.to(device)  # (B, 3, 512, 512)
+            images = images[1].to(device)  # (B, 3, 512, 512)
             targ_cat = target[0].to(device)  # (B, 100)
             targ_bbox = target[1].to(device)  # (B, 100, 4)
             optimizer.zero_grad()
@@ -85,7 +85,7 @@ def train(epoch=1):
         with torch.no_grad():
             val_loader_tqdm = tqdm(val_loader)
             for i, (images, target) in enumerate(val_loader_tqdm):
-                images = images.to(device)
+                images = images[1].to(device)
                 targ_cat = target[0].to(device)
                 targ_bbox = target[1].to(device)
                 pred_cat, pred_bbox = model(images)  # (B, 100, 91), (B, 100, 4)
@@ -112,7 +112,7 @@ def train(epoch=1):
 if __name__ == "__main__":
     # Parameters
     train_batch_size = 4
-    val_batch_size = 48
+    val_batch_size = 16
     num_workers = 2
     num_classes = 91
     num_queries = 100
@@ -121,13 +121,13 @@ if __name__ == "__main__":
     num_encoder_layers = 3
     num_decoder_layers = 3
     dropout = 0
-    epoch = 250
+    epoch = 400
     cost_iou = 2.0
     cost_l1 = 5.0
     cost_cat = 2.0
     loss_cat = 10.0
     lr = 1e-4
-    lr_backbone = 1e-5
+    lr_backbone = 1e-4
     step_size = 200
 
     # Device
