@@ -1,4 +1,6 @@
 import torch
+import torch_tensorrt
+import os.path
 import psutil
 from torchvision import transforms
 from pycocotools.coco import COCO
@@ -67,14 +69,29 @@ if __name__ == "__main__":
 
     # Load model
     model = DETR(num_classes, hidden_dim, nheads, num_encoder_layers, num_decoder_layers, num_queries, dropout, False)
-    model.to(device)
+    model.to(device).eval()
     path = input('Input model path: ')
     if path != '':
-        load_checkpoint = torch.load(path)
-        model.load_state_dict(load_checkpoint)
-        print(f'Loaded model from {path}')
+        _, ext = os.path.splitext(path)
+        if ext == '.pth':
+            print('Loading checkpoint...')
+            convert = input('Convert to TensorRT? (y/n): ')
+            if convert == 'y':
+                save = input('Save to path? (leave blank to not save): ')
+            load_checkpoint = torch.load(path, weights_only=True)
+            model.load_state_dict(load_checkpoint)
+            if convert == 'y':
+                print('Converting to TensorRT...')
+                inp = torch.ones((1, 3, 512, 512)).to(device)
+                model = torch_tensorrt.compile(model, ir="dynamo", inputs=[inp], enabled_precisions={torch.half})
+                if save != '':
+                    torch.save(model, save)
+                    print(f'Saved to {save}')
+        elif ext == '.ep':
+            print('Loading exported model...')
+            model = torch.export.load(path).module()
+        else:
+            raise ValueError('Invalid model path')
     else:
-        load_checkpoint = None
-
-    torch.multiprocessing.set_start_method('forkserver')
+        raise ValueError('Invalid model path')
     detect()
